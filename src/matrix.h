@@ -8,52 +8,117 @@
 #include <map>
 #include <optional>
 #include <tuple>
+#include <type_traits>
 #include <unordered_map>
+#include <utility>
 #include <variant>
 
 namespace detail {
-// ...
+
+template <typename... input_t>
+using tuple_cat_t = decltype(std::tuple_cat(std::declval<input_t>()...));
+
+template <typename T, std::size_t N>
+struct tuple_n {
+  using type = tuple_cat_t<typename tuple_n<T, N - 1>::type, std::tuple<T>>;
+};
+
+template <typename T>
+struct tuple_n<T, 1> {
+  using type = std::tuple<T>;
+};
+
+template <typename T, std::size_t N>
+using tuple_n_t = typename tuple_n<T, N>::type;
+
+template <typename Tuple>
+struct tuple_hasher {
+  auto operator()(const Tuple& tuple) const noexcept -> std::size_t {
+    return hash_impl(tuple,
+                     std::make_index_sequence<std::tuple_size_v<Tuple>>{});
+  }
+
+  template <std::size_t... Indexes>
+  auto hash_impl(const Tuple& tuple,
+                 std::index_sequence<Indexes...> /*seq*/) const noexcept
+      -> std::size_t {
+    // Isn't best way to combine hashes, but easest
+    return (std::hash<std::tuple_element_t<Indexes, Tuple>>{}(
+                std::get<Indexes>(tuple)) ^
+            ...);
+  }
+};
+
 }  // namespace detail
 
-template <typename T, T Default = T{}>
+template <typename T,                  //
+          T Default = T{},             //
+          std::size_t Dimensions = 2,  //
+          typename Container =
+              std::map<detail::tuple_n_t<std::size_t, Dimensions>, T>>
 class Matrix {
   template <typename MatrixType>
   struct value_ref {
-    value_ref(MatrixType& matrix, std::size_t x, std::size_t y)
-        : matrix{matrix}, x{x}, y{y} {}
+    template <typename... Indexes>
+    value_ref(MatrixType& matrix, Indexes... indexes)
+        : matrix{matrix}, position{indexes...} {}
 
     bool operator==(const T& rhs) const noexcept { return rhs == get(); }
 
     template <typename U>
     value_ref& operator=(U&& rhs) {
-      if (rhs == Default) {
-        matrix.erase(x, y);
-      } else {
-        matrix.set(x, y, std::forward<U>(rhs));
-      }
+      std::apply(
+          [&](auto... pos) {
+            if (rhs == Default) {
+              matrix.erase(pos...);
+            } else {
+              matrix.set(std::forward<U>(rhs), pos...);
+            }
+          },
+          position);
 
       return *this;
     }
 
     operator T() const noexcept { return get(); }
 
-    auto get() const noexcept -> T { return matrix.get_or_default(x, y); }
+    auto get() const noexcept -> T {
+      return std::apply(
+          [&](auto... pos) {  //
+            return matrix.get_or_default(pos...);
+          },
+          position);
+    }
 
     MatrixType& matrix;
-    std::size_t x;
-    std::size_t y;
+    detail::tuple_n_t<std::size_t, Dimensions> position;
   };
 
-  template <typename MatrixType>
+  template <typename MatrixType, std::size_t Order>
   struct index_proxy {
-    index_proxy(MatrixType& matrix, std::size_t index)
-        : matrix{matrix}, x{index} {}
+    template <typename... Position>
+    index_proxy(MatrixType& matrix, Position... pos)
+        : matrix{matrix}, current_index{pos...} {}
 
-    auto operator[](std::size_t y) noexcept { return matrix.at(x, y); }
-    auto operator[](std::size_t y) const noexcept { return matrix.at(x, y); }
+    auto operator[](std::size_t last_index) const noexcept {
+      if constexpr (Order == 1) {
+        return std::apply(
+            [&](auto... pos) {  //
+              return matrix.at(pos..., last_index);
+            },
+            current_index);
+      } else {
+        return std::apply(
+            [&](auto... pos) -> index_proxy<MatrixType, Order - 1> {  //
+              // Не самое деликатное решение, но красивое
+              return {matrix, pos..., last_index};
+            },
+            current_index);
+      }
+    }
 
     MatrixType& matrix;
-    std::size_t x;
+    detail::tuple_n_t<std::size_t, Dimensions - Order> current_index;
   };
 
   template <typename MatrixInnerIterator>
@@ -107,46 +172,53 @@ class Matrix {
   using reference = value_ref<Matrix>;
   using const_reference = value_ref<const Matrix>;
 
-  using iterator =
-      matrix_iterator<typename std::map<std::pair<std::size_t, std::size_t>,
-                                        T>::const_iterator>;
+  using iterator = matrix_iterator<typename Container::const_iterator>;
   using const_iterator = iterator;
+
+  template <typename... Args, typename Require = std::enable_if_t<
+                                  std::is_constructible_v<Container, Args...>>>
+  Matrix(Args&&... args) : _data(std::forward<Args>(args)...) {}
 
   auto size() const noexcept -> size_type { return _data.size(); }
 
   bool empty() const noexcept { return _data.empty(); }
 
-  auto operator[](std::size_t index) noexcept -> index_proxy<Matrix> {
-    return index_proxy{*this, index};
+  auto operator[](std::size_t index) noexcept
+      -> index_proxy<Matrix, Dimensions - 1> {
+    return {*this, index};
   }
 
   auto operator[](std::size_t index) const noexcept
-      -> index_proxy<const Matrix> {
-    return index_proxy{*this, index};
+      -> index_proxy<const Matrix, Dimensions - 1> {
+    return {*this, index};
   }
 
-  auto at(std::size_t x, std::size_t y) noexcept {
-    return value_ref<Matrix>{*this, x, y};
+  template <typename... Position>
+  auto at(Position... pos) noexcept {
+    return value_ref<Matrix>{*this, pos...};
   }
 
-  auto at(std::size_t x, std::size_t y) const noexcept {
-    return value_ref<const Matrix>{*this, x, y};
+  template <typename... Position>
+  auto at(Position... pos) const noexcept {
+    return value_ref<const Matrix>{*this, pos...};
   }
 
-  template <typename U>
-  void set(std::size_t x, std::size_t y, U&& val) {
-    _data.insert_or_assign(std::pair{x, y}, std::forward<U>(val));
+  template <typename U, typename... Position>
+  void set(U&& val, Position... pos) {
+    _data.insert_or_assign({pos...}, std::forward<U>(val));
   }
 
-  auto get_or_default(std::size_t x, std::size_t y) const noexcept -> T {
-    if (auto iter = _data.find({x, y}); iter != _data.cend()) {
+  template <typename... Position>
+  auto get_or_default(Position... pos) const noexcept -> T {
+    if (auto iter = _data.find({pos...}); iter != _data.cend()) {
       return iter->second;
     }
     return Default;
   }
 
-  void erase(std::size_t x, std::size_t y) noexcept {
-    if (auto iter = _data.find(std::pair{x, y}); iter != _data.end()) {
+  template <typename... Position>
+  void erase(Position... pos) noexcept {
+    if (auto iter = _data.find({pos...}); iter != _data.end()) {
       _data.erase(iter);
     }
   }
@@ -162,7 +234,7 @@ class Matrix {
   }
 
  private:
-  std::map<std::pair<std::size_t, std::size_t>, T> _data;
+  Container _data;
 };
 
 #endif  // __MATRIX_H_96B48PA31JS9__
