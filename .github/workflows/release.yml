@@ -1,0 +1,84 @@
+name: Release
+
+on: [push]
+
+env:
+  BUILD_TYPE: Release
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions: write-all
+
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+
+    - name: Install dependencies
+      run: sudo apt update && sudo apt install -y cmake g++ make libgtest-dev libgmock-dev git clang-tidy doxygen
+
+    - name: Get Version
+      id: get_version
+      uses: PaulHatch/semantic-version@v5.0.3
+      with:
+        tag_prefix: ""
+        bump_each_commit: false
+        version_format: "${major}.${minor}.${patch}"
+
+    - name: Get Branch Name
+      id: get_branch
+      uses: tj-actions/branch-names@v7
+
+    - name: Configure CMake
+      env:  
+        VERSION: ${{steps.get_version.outputs.version}}
+      run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} -DBUILD_TESTS=ON -DBUILD_DOCS=ON -DBUILD_PACKAGE=ON -DVERSION=${{env.VERSION}} -DRUN_CLANG_TIDY=ON
+
+    - name: Build
+      run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}} --parallel
+
+    - name: Test
+      working-directory: ${{github.workspace}}/build
+      run: ctest -C ${{env.BUILD_TYPE}}
+
+    - name: Create package
+      working-directory: ${{ github.workspace }}/build
+      run: cpack -C ${{env.BUILD_TYPE}}
+
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        COMMIT_DISTANCE: ${{steps.get_version.outputs.increment}}
+        BRANCH: ${{steps.get_branch.outputs.current_branch}}
+      with:
+        tag_name: ${{env.BRANCH}}/${{steps.get_version.outputs.version}}-${{env.COMMIT_DISTANCE}}
+        release_name: Release ${{env.BRANCH}}/${{steps.get_version.outputs.version}}-${{env.COMMIT_DISTANCE}}
+        draft: false
+        prerelease: false
+
+    - name: Upload Assets
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        COMMIT_DISTANCE: ${{steps.get_version.outputs.increment}}
+        COMMIT_HASH: ${{steps.get_version.outputs.current_commit}}
+        BRANCH: ${{steps.get_branch.outputs.current_branch}}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./build/matrix-${{steps.get_version.outputs.version}}-Linux.deb
+        asset_name: matrix-${{env.BRANCH}}-${{steps.get_version.outputs.version}}-${{env.COMMIT_DISTANCE}}-Linux.deb
+        asset_content_type: application/vnd.debian.binary-package
+
+    - name: Upload docs
+      uses: peaceiris/actions-gh-pages@v3
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./build/docs/html/
+        enable_jekyll: false
+        allow_empty_commit: false
+        force_orphan: true
+        publish_branch: gh-pages
+
