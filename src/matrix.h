@@ -42,7 +42,7 @@ struct tuple_hasher {
   auto hash_impl(const Tuple& tuple,
                  std::index_sequence<Indexes...> /*seq*/) const noexcept
       -> std::size_t {
-    // Isn't best way to combine hashes, but easest
+    // Isn't best way to combine hashes, but easiest
     return (std::hash<std::tuple_element_t<Indexes, Tuple>>{}(
                 std::get<Indexes>(tuple)) ^
             ...);
