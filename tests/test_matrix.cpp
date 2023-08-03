@@ -151,6 +151,11 @@ TEST_F(MatrixTest, WorksWithRangeBasedFor) {  // NOLINT
   ASSERT_EQ(from_matrix, (std::set<int>{1, 2}));
 }
 
+TEST_F(MatrixTest, SupportsCanonicalAsigmentOperator) {  // NOLINT
+  (((matrix[0][0] = 1) = 2) = 3) = 4;
+  ASSERT_EQ(matrix[0][0], 4);
+}
+
 TEST_F(MatrixTest, WorksWithStandardAlgorithms) {  // NOLINT
   matrix[0][0] = 1;
   matrix[0][1] = 2;
