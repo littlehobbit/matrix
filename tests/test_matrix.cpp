@@ -183,7 +183,7 @@ TEST(MatrixWithUnorderedMap, Create) {  // NOLINT
   using key_type = detail::tuple_n_t<std::size_t, 2>;
   using unordered_matrix_t =
       Matrix<int, int{}, 2,
-             std::unordered_map<key_type, int, detail::tuple_hasher<key_type>>>;
+             std::unordered_map<key_type, int, detail::tuple_hasher>>;
 
   constexpr auto default_size = 2048;
   unordered_matrix_t unordered_matrix{default_size};
