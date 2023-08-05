@@ -322,8 +322,8 @@ class Matrix {
       return iter != rhs.iter;
     }
 
-    auto operator*() const noexcept -> std::tuple<std::size_t, std::size_t, T> {
-      return {std::get<0>(iter->first), std::get<1>(iter->first), iter->second};
+    auto operator*() const noexcept {
+      return std::tuple_cat(iter->first, std::tuple{iter->second});
     }
 
     MatrixInnerIterator iter;

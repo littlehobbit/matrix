@@ -172,6 +172,12 @@ TEST(ThreeDimensionalMatrix, Create) {  // NOLINT
   ASSERT_EQ(matrix3d.at(0, 1, 2), 222);
   ASSERT_EQ(matrix3d[0][1][2], 222);
 
+  auto [x, y, z, val] = *matrix3d.begin();
+  ASSERT_EQ(x, 0);
+  ASSERT_EQ(y, 1);
+  ASSERT_EQ(z, 2);
+  ASSERT_EQ(val, 222);
+
   ASSERT_EQ(matrix3d.size(), 1);
   hoolder3d = int{};
   ASSERT_EQ(matrix3d.size(), 0);
