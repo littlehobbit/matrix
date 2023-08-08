@@ -466,9 +466,7 @@ class Matrix {
    */
   template <typename... Position>
   void erase(Position... pos) noexcept {
-    if (auto iter = _data.find({pos...}); iter != _data.end()) {
-      _data.erase(iter);
-    }
+    _data.erase({pos...});
   }
 
   auto begin() const noexcept -> const_iterator { return cbegin(); }
