@@ -260,20 +260,16 @@ class Matrix {
      * overwise
      */
     auto operator[](std::size_t last_index) const noexcept {
-      if constexpr (Order == 1) {
-        return std::apply(
-            [&](auto... pos) {  //
+      return std::apply(
+          [&](auto... pos) {  //
+            if constexpr (Order == 1) {
               return matrix.at(pos..., last_index);
-            },
-            current_index);
-      } else {
-        return std::apply(
-            [&](auto... pos) -> index_proxy<MatrixType, Order - 1> {  //
-              // Не самое деликатное решение, но красивое
-              return {matrix, pos..., last_index};
-            },
-            current_index);
-      }
+            } else {
+              return index_proxy<MatrixType, Order - 1>{matrix, pos...,
+                                                        last_index};
+            }
+          },
+          current_index);
     }
 
     MatrixType& matrix;
