@@ -39,15 +39,20 @@ if (${BUILD_TESTS})
   if (${ENABLE_COVERAGE})
     include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/code_coverage.cmake)
 
-    setup_target_for_coverage_lcov(
-      NAME lcov
+    setup_target_for_coverage_gcovr_html(
+      NAME gcovr_html
       EXECUTABLE ctest
       DEPENDENCIES ${PROJECT_NAME}_lib ${PROJECT_NAME}_tests
-      EXCLUDE
-        "build/*"
-        "/usr/*"
-        "tests/*"
+      BASE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/src"
     )
+
+    setup_target_for_coverage_gcovr_xml(
+      NAME gcovr
+      EXECUTABLE ctest
+      DEPENDENCIES ${PROJECT_NAME}_lib ${PROJECT_NAME}_tests
+      BASE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    )
+
   endif()
 endif()
 
